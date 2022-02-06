@@ -17,6 +17,11 @@ def create_payment_method(**kwargs):
         return stripe_create_payment_method(**kwargs)
     raise NotImplementedError("Unsupported Payment Backend")
 
+def get_payment_method_detail(**kwargs):
+    if settings.PAYMENT_BACKEND == "stripe":
+        return stripe_get_payment_method_detail(**kwargs)
+    raise NotImplementedError("Unsupported Payment Backend")
+
 def get_payment_method_details(**kwargs):
     if settings.PAYMENT_BACKEND == "stripe":
         return stripe_get_payment_method_details(**kwargs)

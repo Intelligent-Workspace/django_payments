@@ -16,8 +16,6 @@ def __stripe_payment_method_pretty(payment_obj):
             "type": "card",
             "brand": payment_obj["card"]["brand"],
             "last4": payment_obj["card"]["last4"],
-            "cvc_verify": True,
-            "zip_verify": True,
             "exp_month": payment_obj["card"]["exp_month"],
             "exp_year": payment_obj["card"]["exp_year"]
         }
@@ -171,6 +169,27 @@ def stripe_create_payment_method(**kwargs):
         setup_intent = response['resource']
         return True, {"type": payment_type, "client_secret": setup_intent["client_secret"]}
 
+def stripe_get_payment_method_detail(**kwargs):
+    merchant_id = kwargs.get("merchant_id", 0)
+    unique_id = kwargs.get("unique_id", None)
+    payment_method_id = kwargs.get("payment_method_id", False)
+
+    backend = "stripe"
+    
+    if unique_id == None:
+        raise Exception("Please provide a unique id")
+
+    if merchant_id != 0:
+        raise NotImplementedError("Creating Customers on Merchants not supported")
+
+    if payment_method_id == False:
+        raise Exception("Please provide a payment_method_id")
+
+    response = _stripe_api_call(stripe.PaymentMethod.retrieve, id=payment_method_id)
+    if not response['is_success']:
+        return False, {"reason": "unexpected_error"}
+    return True, __stripe_payment_method_pretty(response['resource'])
+
 def stripe_get_payment_method_details(**kwargs):
     merchant_id = kwargs.get("merchant_id", 0)
     unique_id = kwargs.get("unique_id", None)
@@ -190,11 +209,11 @@ def stripe_get_payment_method_details(**kwargs):
     q_payment_method = PaymentMethod.objects.all().filter(merchant_id=merchant_id, unique_id=unique_id)
     l_pretty_payment_method = []
     for payment_method_obj in q_payment_method:
-        response = _stripe_api_call(stripe.PaymentMethod.retrieve, id=payment_method_obj.payment_method_info["payment_method_id"])
-        if not response['is_success']:
+        is_success, pretty_payment_method = stripe_get_payment_method_detail(merchant_id=merchant_id, unique_id=unique_id, 
+            payment_method_id=payment_method_obj.payment_method_info["payment_method_id"])
+        if not is_success:
             return False, {"reason": "unexpected_error"}
-        payment_method = response['resource']
-        l_pretty_payment_method.append(__stripe_payment_method_pretty(payment_method))
+        l_pretty_payment_method.append(pretty_payment_method)
 
     return True, l_pretty_payment_method
 
@@ -203,8 +222,8 @@ def stripe_create_charge(**kwargs):
     unique_id = kwargs.get("unique_id", None)
     description = kwargs.get("description", None)
     amount = kwargs.get("amount", None) #This is the amount in cents
-    payment_token = kwargs.get("payment_token", None)
 
+    payment_token = None
     backend = "stripe"
 
     if unique_id == None:
@@ -226,15 +245,14 @@ def stripe_create_charge(**kwargs):
         customer_obj = Customer.objects.get(merchant_id=merchant_id, unique_id=unique_id)
     except Customer.DoesNotExist:
         return False, {"reason": "customer_doesnt_exist"}
+    q_payment_method = PaymentMethod.objects.all().filter(merchant_id=merchant_id, unique_id=unique_id)
+    if q_payment_method.count() == 0:
+        raise Exception("Please add a payment method for this customer before charging or provide a payment token")
+    for payment_method in q_payment_method:
+        payment_token = payment_method.payment_method_info["payment_method_id"]
+        break
     if payment_token == None:
-        q_payment_method = PaymentMethod.objects.all().filter(merchant_id=merchant_id, unique_id=unique_id)
-        if q_payment_method.count() == 0:
-            raise Exception("Please add a payment method for this customer before charging or provide a payment token")
-        for payment_method in q_payment_method:
-            payment_token = payment_method.payment_method_info["payment_method_id"]
-            break
-        if payment_token == None:
-            raise Exception("Please make sure this customer has atleast one confirmed payment method registered")
+        raise Exception("Please make sure this customer has atleast one confirmed payment method registered")
     """
     charge = stripe.Charge.create(customer=customer_obj.customer_info["customer_id"], amount=int(amount), currency="usd",
         source=payment_token, description=description)
@@ -247,5 +265,11 @@ def stripe_create_charge(**kwargs):
         )
     except stripe.error.CardError as e:
         print(e)
+    
+    response = _stripe_api_call(stripe.PaymentIntent.create, customer=customer_obj.customer_info["customer_id"], amount=int(amount),
+        currency="usd", confirm=True, off_session=True, payment_method=payment_token, statement_descriptor=description)
 
-    return True, {}
+    if not response['is_success']:
+        return False, {"reason": "unexpected_error"}
+    else:
+        return True, {}

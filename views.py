@@ -17,7 +17,7 @@ def webhook_stripe(request):
     sig_header = request.headers['STRIPE_SIGNATURE']
 
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret, api_key=stripe.api_key)
+        event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
     except ValueError as e:
         raise e
     except stripe.error.SignatureVerificationError as e:
