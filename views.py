@@ -2,6 +2,7 @@ from django.shortcuts import render
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+from django.conf import settings
 
 from django_payments.models import Customer, PaymentMethod
 
@@ -11,7 +12,7 @@ import stripe
 @csrf_exempt
 @require_POST
 def webhook_stripe(request):
-    endpoint_secret = "whsec_67fda2de794579850501884a2c39f477dafe8f679d7764c4dd4e77be38f3f48f"
+    endpoint_secret = settings.PAYMENT_MISC_SETTINGS["stripe"]["webhook_signing_secret"] 
     event = None
     payload = request.body
     sig_header = request.headers['STRIPE_SIGNATURE']

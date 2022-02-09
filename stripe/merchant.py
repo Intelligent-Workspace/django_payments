@@ -9,6 +9,9 @@ from django.conf import settings
 from django_payments.models import Merchant
 from django_payments.stripe.utils import _stripe_api_call
 
+stripe.api_key = settings.PAYMENT_PRIVATE_KEY["stripe"]
+stripe.max_network_retries = 2
+
 def stripe_merchant_create(**kwargs):
     """
     country - country the connected account should recide in (i.e US)
@@ -23,14 +26,13 @@ def stripe_merchant_create(**kwargs):
         raise Exception("Invalid request. Please specify the unique_id")
     if country == None:
         raise Exception("Invalid request. Please specify the country")
-    capabilities = dict()
-    capabilities["card_payments"] = {"requested": True}
-    capabilities["transfers"] = {"requested": True}
+    if country != "us":
+        raise Exception("Invalid request. Only 'US' is supported as a country")
 
     try:
         merchant_obj = Merchant.objects.get(unique_id=unique_id, provider=provider)
     except Merchant.DoesNotExist:
-        response = _stripe_api_call(stripe.Account.create, country="us", type="standard")
+        response = _stripe_api_call(stripe.Account.create, country=country, type="standard")
         if not response['is_success']:
             return False, {"reason": "unexpected_error"}
         account = response["resource"]
@@ -57,15 +59,15 @@ def stripe_merchant_account_url(**kwargs):
 
     response = _stripe_api_call(stripe.AccountLink.create,
         account=merchant_obj.merchant_info["account_id"],
-        refresh_url=(base_url + reverse(settings.PAYMENT_REFRESH_URL)),
-        return_url=(base_url + reverse(settings.PAYMENT_RETURN_URL)),
+        refresh_url=(base_url + reverse(settings.PAYMENT_MISC_SETTINGS["stripe"]["refresh_url"])),
+        return_url=(base_url + reverse(settings.PAYMENT_MISC_SETTINGS["stripe"]["return_url"])),
         type="account_onboarding"
     )
     if not response['is_success']:
         return False, {"reason": "unexpected_error"}
     return True, response["resource"]["url"]
 
-def stripe_sync_merchant(**kwargs):
+def stripe_merchant_sync(**kwargs):
     unique_id = kwargs.get("unique_id", None)
     provider = "stripe"
 
