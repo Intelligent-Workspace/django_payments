@@ -26,23 +26,24 @@ class Merchant(models.Model, Bitmap):
     flag = models.IntegerField(default=0)
     flag2 = models.IntegerField(default=0)
 
-    def set_kyc_done(self):
+    def set_is_setup_started(self):
         self.set_flag(1)
 
-    def reset_kyc_done(self):
+    def reset_is_setup_started(self):
         self.reset_flag(1)
-
-    def check_kyc_done(self):
+    
+    def check_is_setup_started(self):
         return self.is_flag_valid(1)
-
-    def set_bank_acc_done(self):
+    
+    def set_is_setup_finished(self):
         self.set_flag(2)
 
-    def reset_bank_acc_done(self):
+    def reset_is_setup_finished(self):
         self.reset_flag(2)
-
-    def check_bank_acc_done(self):
+    
+    def check_is_setup_finished(self):
         return self.is_flag_valid(2)
+
 
 class Customer(models.Model, Bitmap):
     merchant_id = models.IntegerField(default=0)
