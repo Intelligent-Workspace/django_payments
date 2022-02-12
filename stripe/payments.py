@@ -46,6 +46,8 @@ def stripe_create_customer(**kwargs):
     if email == None:
         raise Exception("Please provide an email")
 
+    email = email.lower()
+
     try:
         customer_obj = Customer.objects.get(merchant_id=merchant_id, unique_id=unique_id, customer_info__type=backend)
     except Customer.DoesNotExist:
