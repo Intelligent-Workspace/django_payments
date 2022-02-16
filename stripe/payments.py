@@ -133,14 +133,23 @@ def stripe_create_payment_method(**kwargs):
         return True, {"client_secret": setup_intent["client_secret"]}
 
 def stripe_get_payment_method_detail(**kwargs):
+    merchant_id = kwargs.get("merchant_id", 0)
     payment_method_id = kwargs.get("payment_method_id", False)
 
     backend = "stripe"
     
     if payment_method_id == False:
         raise Exception("Please provide a payment_method_id")
-
-    response = _stripe_api_call(stripe.PaymentMethod.retrieve, id=payment_method_id)
+    d_args = dict()
+    d_args['id'] = payment_method_id
+    if merchant_id > 0:
+        try:
+            merchant_obj = Merchant.objects.get(unique_id=merchant_id, provider=backend)
+        except Merchant.DoesNotExist:
+            return False, {"reason": "merchant_not_exist"}
+        else:
+            d_args['stripe_account'] = merchant_obj.merchant_info["account_id"]
+    response = _stripe_api_call(stripe.PaymentMethod.retrieve, **d_args)
     if not response['is_success']:
         return False, {"reason": "unexpected_error"}
     return True, __stripe_payment_method_pretty(response['resource'])
@@ -179,6 +188,7 @@ def stripe_create_charge(**kwargs):
     amount = kwargs.get("amount", None) #This is the amount in cents
     off_session = kwargs.get("off_session", True)
     auto_charge = kwargs.get("auto_charge", False)
+    metadata = kwargs.get("metadata", False)
 
     payment_token = None
     backend = "stripe"
@@ -195,6 +205,9 @@ def stripe_create_charge(**kwargs):
     if amount <= 0:
         raise Exception("Please provide a valid charge amount(> 0)")
 
+    if metadata != False and isinstance(metadata, dict) == False:
+        raise Exception("Please provide a dictionary for the metadata")
+
     try:
         customer_obj = Customer.objects.get(merchant_id=merchant_id, unique_id=unique_id)
     except Customer.DoesNotExist:
@@ -210,9 +223,12 @@ def stripe_create_charge(**kwargs):
             break
         if payment_token == None:
             raise Exception("Please make sure this customer has atleast one confirmed payment method registered")
-        
-        response = _stripe_api_call(stripe.PaymentIntent.create, customer=customer_obj.customer_info["customer_id"], amount=int(amount),
-            currency="usd", confirm=True, off_session=off_session, payment_method=payment_token, statement_descriptor=description)
+        if metadata != False: 
+            response = _stripe_api_call(stripe.PaymentIntent.create, customer=customer_obj.customer_info["customer_id"], amount=int(amount),
+                currency="usd", confirm=True, off_session=off_session, payment_method=payment_token, statement_descriptor=description, metadata=metadata)
+        else:
+            response = _stripe_api_call(stripe.PaymentIntent.create, customer=customer_obj.customer_info["customer_id"], amount=int(amount),
+                currency="usd", confirm=True, off_session=off_session, payment_method=payment_token, statement_descriptor=description)
     else:
         d_args = dict()
         if merchant_id > 0:
@@ -225,11 +241,13 @@ def stripe_create_charge(**kwargs):
         d_args['customer'] = customer_obj.customer_info["customer_id"]
         d_args['amount'] = int(amount)
         d_args['currency'] = "usd"
-        d_args['off_session'] = off_session
+        #d_args['off_session'] = off_session
         d_args['statement_descriptor'] = description
+        if metadata != False:
+            d_args['metadata'] = metadata
         response = _stripe_api_call(stripe.PaymentIntent.create, **d_args)
 
     if not response['is_success']:
         return False, {"reason": "unexpected_error"}
     else:
-        return True, {}
+        return True, {"client_secret": response['resource']['client_secret']}

@@ -21,3 +21,8 @@ def merchant_state(**kwargs):
         return stripe_merchant_state(**kwargs)
     raise NotImplementedError("Unsupported Payment Backend")
 
+def merchant_info(**kwargs):
+    if get_backend() == "stripe":
+        return stripe_merchant_info(**kwargs)
+    raise NotImplementedError("Unsupported Payment Backend")
+

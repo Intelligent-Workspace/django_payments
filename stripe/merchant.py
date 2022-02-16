@@ -84,7 +84,7 @@ def stripe_merchant_sync(**kwargs):
     account = response['resource']    
     merchant_obj.set_is_setup_started()
 
-    if account["charges_enabled"] == True and account["details_submitted"] == True and account["payouts_enabled"]:
+    if account["charges_enabled"] == True and account["details_submitted"] == True and account["payouts_enabled"] == True:
         merchant_obj.set_is_setup_finished()
     merchant_obj.save()
     return True, {}
@@ -107,3 +107,17 @@ def stripe_merchant_state(**kwargs):
         return True, {"status": "setup_started"}
     else:
         return True, {"status": "setup_not_started"}
+
+def stripe_merchant_info(**kwargs):
+    unique_id = kwargs.get("unique_id", None)
+    provider = "stripe"
+
+    if unique_id == None:
+        raise Exception("Invalid request. Please specify the unique_id")
+
+    try:
+        merchant_obj = Merchant.objects.get(unique_id=unique_id, provider=provider)
+    except Merchant.DoesNotExist:
+        return False, {"reason": "merchant_not_exist"}
+    else:
+        return True, {"backend_id": merchant_obj.merchant_info["account_id"]}
