@@ -25,7 +25,7 @@ def stripe_process(webhook_event, callback):
             params = dict()
             params['merchant_id'] = customer_obj.merchant_id
             params['customer_id'] = customer_obj.unique_id
-            params['payment_method_id'] = payment_method_obj.id
+            params['payment_method_id'] = payment_method_object.id
             params['event'] = "payment_method_success"
             callback(params)
     elif webhook_event['type'] == "account.updated":

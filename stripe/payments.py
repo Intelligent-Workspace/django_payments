@@ -216,14 +216,12 @@ def stripe_create_charge(**kwargs):
         if merchant_id != 0:
             raise NotImplementedError("Creating Auto Charges on Merchants not supported")
         q_payment_method = PaymentMethod.objects.all().filter(merchant_id=merchant_id, unique_id=unique_id)
-        if q_payment_method.count() == 0:
-            raise Exception("Please add a payment method for this customer before charging or provide a payment token")
         for payment_method in q_payment_method:
             payment_token = payment_method.payment_method_info["payment_method_id"]
             break
         if payment_token == None:
-            raise Exception("Please make sure this customer has atleast one confirmed payment method registered")
-        if metadata != False: 
+            return False, {"reason": "no_payment_method"}
+        if metadata != False:
             response = _stripe_api_call(stripe.PaymentIntent.create, customer=customer_obj.customer_info["customer_id"], amount=int(amount),
                 currency="usd", confirm=True, off_session=off_session, payment_method=payment_token, statement_descriptor=description, metadata=metadata)
         else:
