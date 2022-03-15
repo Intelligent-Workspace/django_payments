@@ -44,25 +44,18 @@ def stripe_process(webhook_event, callback):
             params['merchant_id'] = merchant_obj.unique_id
             params['event'] = "merchant_account_success"
             callback(params)
-    elif webhook_event['type'] == "payment_intent.succeeded":
+    elif webhook_event['type'] == "charge.succeeded":
         try:
             customer_obj = Customer.objects.get(customer_info__type="stripe", customer_info__customer_id=webhook_event.data.object.customer)
         except Customer.DoesNotExist:
             pass
         else:
-            from django_payments.payments import get_payment_method_detail
             params = dict()
             params['merchant_id'] = customer_obj.merchant_id
             params['customer_id'] = customer_obj.unique_id
             params['metadata'] = webhook_event.data.object.metadata
             params['event'] = "charge_success"
-
-            is_success, response = get_payment_method_detail(merchant_id=params['merchant_id'], 
-                payment_method_id=webhook_event.data.object.payment_method)
-            params['payment_method'] = "unknown"
-            if is_success:
-                params['payment_method'] = response["type"]
-
+            params['payment_method'] = webhook_event.data.object.payment_method_details.type
             callback(params)
 
 # Create your views here.
