@@ -394,4 +394,14 @@ def stripe_ach_create_charge(**kwargs):
     if response['is_success']:
         return True, {}
     else:
+        if response['resource']['code'] == "amount_too_large":
+            return False, {"reason": "amt_too_large"}
+        elif response['resource']['code'] == "amount_too_small":
+            return False, {"reason": "amt_too_small"}
+        elif response['resource']['code'] == "bank_account_unusable":
+            return False, {"reason": "bank_acc_not_usable"}
+        elif response['resource']['code'] == "debit_not_authorized":
+            return False, {"reason": "unauthorized_payment"}
+        elif response['resource']['code'] == "insufficient_funds":
+            return False, {"reason": "insufficient_funds"}
         return False, {}
