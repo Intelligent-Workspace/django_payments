@@ -11,13 +11,13 @@ import stripe
 from threading import Thread
 
 def stripe_process(webhook_event, callback):
-    if webhook_event['type'] == "setup_intent.succeeded":
+    if webhook_event['type'] == "payment_method.attached":
         try:
             customer_obj = Customer.objects.get(customer_info__type="stripe", customer_info__customer_id=webhook_event.data.object.customer)
         except Customer.DoesNotExist:
             pass
         else:
-            d_payment_method = {"payment_method_id": webhook_event.data.object.payment_method}
+            d_payment_method = {"payment_method_id": webhook_event.data.object.id, "payment_method_type": "payment_method"}
             payment_method_object = PaymentMethod(merchant_id=customer_obj.merchant_id, unique_id=customer_obj.unique_id,
                 payment_method_info=d_payment_method)
             payment_method_object.save()
