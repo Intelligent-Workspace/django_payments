@@ -57,6 +57,18 @@ def stripe_process(webhook_event, callback):
             params['event'] = "charge_success"
             params['payment_method'] = webhook_event.data.object.payment_method_details.type
             callback(params)
+    elif webhook_event['type'] == "charge.pending":
+        try:
+            customer_obj = Customer.objects.get(customer_info__type="stripe", customer_info__customer_id=webhook_event.data.object.customer)
+        except Customer.DoesNotExist:
+            pass
+        else:
+            params = dict()
+            params['merchant_id'] = customer_obj.merchant_id
+            params['customer_id'] = customer_obj.unique_id
+            params['metadata'] = webhook_event.data.object.metadata
+            params['event'] = "charge_processing"
+            callback(params)
 
 # Create your views here.
 @csrf_exempt
