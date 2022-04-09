@@ -69,6 +69,26 @@ def stripe_process(webhook_event, callback):
             params['metadata'] = webhook_event.data.object.metadata
             params['event'] = "charge_processing"
             callback(params)
+    elif webhook_event['type'] == "charge.failed":
+        """
+        fail_code
+            - debit_not_authorized - Customer has notified their bank that this payment was unauthorized
+            - insufficient_funds - Customer has insufficient funds to cover this payment
+            - no_account - Customer bank account could not be located
+            - account_closed - Customer bank account has been closed
+        """
+        try:
+            customer_obj = Customer.objects.get(customer_info__type="stripe", customer_info__customer_id=webhook_event.data.object.customer)
+        except Customer.DoesNotExist:
+            pass
+        else:
+            params = dict()
+            params['merchant_id'] = customer_obj.merchant_id
+            params['customer_id'] = customer_obj.unique_id
+            params['metadata'] = webhook_event.data.object.metadata
+            params['fail_code'] = webhook_event.data.object.failure_code
+            params['event'] = "charge_fail"
+            callback(params)
 
 # Create your views here.
 @csrf_exempt

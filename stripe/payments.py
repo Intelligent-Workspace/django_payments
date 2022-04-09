@@ -158,6 +158,46 @@ def stripe_create_payment_method(**kwargs):
         setup_intent = response['resource']
         return True, {"client_secret": setup_intent["client_secret"]}
 
+def stripe_delete_payment_method(**kwargs):
+    merchant_id = kwargs.get("merchant_id", 0)
+    unique_id = kwargs.get("unique_id", None)
+    payment_method_id = kwargs.get("payment_method_id", None)
+
+    backend = "stripe"
+
+    if unique_id == None:
+        raise Exception("Please provide a unique id")
+    
+    if payment_method_id == None:
+        raise Exception("Please provide a payment method id")
+    
+    try:
+        customer_obj = Customer.objects.get(merchant_id=merchant_id, unique_id=unique_id)
+    except Customer.DoesNotExist:
+        return False, {"reason": "customer_doesnt_exist"}
+
+    d_args = dict() 
+    if merchant_id > 0:
+        try:
+            merchant_obj = Merchant.objects.get(unique_id=merchant_id, provider=backend)
+        except Merchant.DoesNotExist:
+            return False, {"reason": "merchant_not_exist"}
+        else:
+            d_args['stripe_account'] = merchant_obj.merchant_info["account_id"] 
+
+    try:
+        payment_method_obj = PaymentMethod.objects.get(merchant_id=merchant_id, unique_id=unique_id, id=payment_method_id)
+    except PaymentMethod.DoesNotExist:
+        return False, {"reason": "payment_method_doesnt_exist"}
+
+    d_args['sid'] =  payment_method_obj.payment_method_info["payment_method_id"]
+    response = _stripe_api_call(stripe.PaymentMethod.detach, **d_args)
+    if response['is_success']:
+        payment_method_obj.delete()
+        return True, {}
+    else:
+        return False, {"reason": "unexpected_error"}
+
 def stripe_get_payment_method_detail(**kwargs):
     merchant_id = kwargs.get("merchant_id", 0)
     unique_id = kwargs.get("unique_id", 0)
@@ -251,6 +291,11 @@ def stripe_create_charge(**kwargs):
         return False, {"reason": "customer_doesnt_exist"}
     d_args = dict()
     d_args['payment_method_types'] = ["card", "us_bank_account"]
+    d_args['payment_method_options'] = {
+        "us_bank_account": {
+            "verification_method": "instant"
+        }
+    }
     if merchant_id > 0:
         try:
             merchant_obj = Merchant.objects.get(unique_id=merchant_id, provider=backend)
