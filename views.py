@@ -87,6 +87,7 @@ def stripe_process(webhook_event, callback):
             params['customer_id'] = customer_obj.unique_id
             params['metadata'] = webhook_event.data.object.metadata
             params['fail_code'] = webhook_event.data.object.failure_code
+            params['fail_message'] = webhook_event.data.object.failure_message
             params['event'] = "charge_fail"
             callback(params)
 

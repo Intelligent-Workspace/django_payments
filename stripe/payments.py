@@ -302,21 +302,24 @@ def stripe_create_charge(**kwargs):
         except Merchant.DoesNotExist:
             return False, {"reason": "merchant_not_exist"}
         else:
-            d_args['stripe_account'] = merchant_obj.merchant_info["account_id"] 
+            d_args['stripe_account'] = merchant_obj.merchant_info["account_id"]
+
+    payment_token = None
+    q_payment_method = PaymentMethod.objects.all().filter(merchant_id=merchant_id, unique_id=unique_id, 
+        payment_method_info__payment_method_type="payment_method")
+    if payment_method_id > -1:
+        try:
+            payment_method = q_payment_method.get(id=payment_method_id)
+        except PaymentMethod.DoesNotExist:
+            pass
+        else:
+            payment_token = payment_method.payment_method_info["payment_method_id"]
+
     if auto_charge:
-        q_payment_method = PaymentMethod.objects.all().filter(merchant_id=merchant_id, unique_id=unique_id, 
-            payment_method_info__payment_method_type="payment_method")
         if payment_method_id == -1:
             for payment_method in q_payment_method:
                 payment_token = payment_method.payment_method_info["payment_method_id"]
                 break
-        else:
-            try:
-                payment_method = q_payment_method.get(id=payment_method_id)
-            except PaymentMethod.DoesNotExist:
-                pass
-            else:
-                payment_token = payment_method.payment_method_info["payment_method_id"]
         if payment_token == None:
             return False, {"reason": "no_payment_method"}
         d_args['customer'] = customer_obj.customer_info["customer_id"]
@@ -324,11 +327,9 @@ def stripe_create_charge(**kwargs):
         d_args['currency'] = "usd"
         d_args['confirm'] = True
         d_args['off_session'] = off_session
-        d_args['payment_method'] = payment_token
         d_args['statement_descriptor'] = description
         if metadata != False:
             d_args['metadata'] = metadata
-        response = _stripe_api_call(stripe.PaymentIntent.create, **d_args)
     else:
         d_args['customer'] = customer_obj.customer_info["customer_id"]
         d_args['amount'] = int(amount)
@@ -338,7 +339,9 @@ def stripe_create_charge(**kwargs):
         d_args['statement_descriptor'] = description
         if metadata != False:
             d_args['metadata'] = metadata
-        response = _stripe_api_call(stripe.PaymentIntent.create, **d_args)
+
+    d_args['payment_method'] = payment_token
+    response = _stripe_api_call(stripe.PaymentIntent.create, **d_args)
 
     if not response['is_success']:
         return False, {"reason": "unexpected_error"}
