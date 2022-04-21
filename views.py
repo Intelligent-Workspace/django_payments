@@ -5,7 +5,7 @@ from django.views.decorators.http import require_POST
 from django.utils.module_loading import import_string
 from django.conf import settings
 
-from django_payments.models import Customer, PaymentMethod
+from django_payments.models import Customer, PaymentMethod, Merchant
 
 import stripe
 from threading import Thread
