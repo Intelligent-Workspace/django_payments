@@ -36,6 +36,11 @@ def create_charge(**kwargs):
         return stripe_create_charge(**kwargs)
     raise NotImplementedError("Unsupported Payment Backend")
 
+def update_charge(**kwargs):
+    if get_backend() == "stripe":
+        return stripe_update_charge(**kwargs)
+    raise NotImplementedError("Unsupported Payment Backend")
+
 def ach_create_auth_token(**kwargs):
     if get_backend() == "stripe":
         return stripe_ach_create_auth_token(**kwargs)
