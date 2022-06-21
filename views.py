@@ -17,7 +17,11 @@ def stripe_process(webhook_event, callback):
         except Customer.DoesNotExist:
             pass
         else:
-            d_payment_method = {"payment_method_id": webhook_event.data.object.id, "payment_method_type": "payment_method"}
+            d_payment_method = {"payment_method_id": webhook_event.data.object.id, "payment_method_type": "payment_method", "payment_method": ""}
+            if "card" in webhook_event.data.object:
+                d_payment_method["payment_method"] = "card"
+            elif "us_bank_account" in webhook_event.data.object:
+                d_payment_method["payment_method"] = "ach_debit"
             payment_method_object = PaymentMethod(merchant_id=customer_obj.merchant_id, unique_id=customer_obj.unique_id,
                 payment_method_info=d_payment_method)
             payment_method_object.save()
@@ -36,6 +40,19 @@ def stripe_process(webhook_event, callback):
         else:
             account = webhook_event.data.object
             merchant_obj.set_is_setup_started()
+            if account['requirements']['disabled_reason'] is not None:
+                if account['requirements']['disabled_reason'] == "requirements.past_due":
+                    merchant_obj.merchant_info["verification_status"] = "requires_info"
+                elif account['requirements']['disabled_reason'] == "requirements.pending_verification":
+                    merchant_obj.merchant_info['verification_status'] = "verify"
+                elif "rejected" in account['requirements']['disabled_reason']:
+                    merchant_obj.merchant_info['verification_status'] = "rejected"
+                elif account['requirements']['disabled_reason'] == "listed" or account['requirements']['disabled_reason'] == "under_review":
+                    merchant_obj.merchant_info['verification_status'] = "under_review"
+                elif account['requirements']['disabled_reason'] == "other":
+                    merchant_obj.merchant_info['verification_status'] = "under_review_disable"
+                else:
+                    pass
             if account["charges_enabled"] == True and account["details_submitted"] == True and account["payouts_enabled"] == True:
                 merchant_obj.set_is_setup_finished()
             merchant_obj.save()

@@ -13,7 +13,7 @@ stripe.max_network_retries = 2
 
 def __stripe_payment_method_pretty(payment_obj):
     if "card" in payment_obj:
-        payment_method_id = None
+        payment_method_id = -1
         try:
             payment_method_obj = PaymentMethod.objects.get(payment_method_info__payment_method_type="payment_method", 
                 payment_method_info__payment_method_id=payment_obj["id"])
@@ -31,7 +31,7 @@ def __stripe_payment_method_pretty(payment_obj):
             "exp_year": payment_obj["card"]["exp_year"]
         }
     elif "us_bank_account" in payment_obj:
-        payment_method_id = None
+        payment_method_id = -1
         try:
             payment_method_obj = PaymentMethod.objects.get(payment_method_info__payment_method_type="payment_method", 
                 payment_method_info__payment_method_id=payment_obj["id"])
@@ -234,6 +234,7 @@ def stripe_get_payment_method_detail(**kwargs):
 def stripe_get_payment_method_details(**kwargs):
     merchant_id = kwargs.get("merchant_id", 0)
     unique_id = kwargs.get("unique_id", None)
+    payment_method_filter_list = kwargs.get("payment_method_filter_list", None)
 
     backend = "stripe"
 
@@ -245,6 +246,8 @@ def stripe_get_payment_method_details(**kwargs):
     except Customer.DoesNotExist:
         return False, {"reason": "customer_doesnt_exist"}
     q_payment_method = PaymentMethod.objects.all().filter(merchant_id=merchant_id, unique_id=unique_id)
+    if payment_method_filter_list is not None:
+        q_payment_method = q_payment_method.filter(payment_method_info__payment_method__in=payment_method_filter_list)
     l_pretty_payment_method = []
     for payment_method_obj in q_payment_method:
         is_success, pretty_payment_method = stripe_get_payment_method_detail(merchant_id=merchant_id, unique_id=unique_id, 
@@ -261,6 +264,7 @@ def stripe_create_charge(**kwargs):
     unique_id = kwargs.get("unique_id", None)
     description = kwargs.get("description", None)
     amount = kwargs.get("amount", None) #This is the amount in cents
+    application_fee_amount = kwargs.get("application_fee_amount", 0) #This is the amount in cents
     auto_charge = kwargs.get("auto_charge", False)
     is_save_payment = kwargs.get("is_save_payment", False)
     payment_method_id = kwargs.get("payment_method_id", -1)
@@ -282,20 +286,13 @@ def stripe_create_charge(**kwargs):
     if amount <= 0:
         raise Exception("Please provide a valid charge amount(> 0)")
 
+    if application_fee_amount < 0:
+        raise Exception("Please provide a valid application fee amount(> 0)")
+
     if metadata != False and isinstance(metadata, dict) == False:
         raise Exception("Please provide a dictionary for the metadata")
 
-    try:
-        customer_obj = Customer.objects.get(merchant_id=merchant_id, unique_id=unique_id)
-    except Customer.DoesNotExist:
-        return False, {"reason": "customer_doesnt_exist"}
     d_args = dict()
-    d_args['payment_method_types'] = ["card", "us_bank_account"]
-    d_args['payment_method_options'] = {
-        "us_bank_account": {
-            "verification_method": "instant"
-        }
-    }
     if merchant_id > 0:
         try:
             merchant_obj = Merchant.objects.get(unique_id=merchant_id, provider=backend)
@@ -303,6 +300,17 @@ def stripe_create_charge(**kwargs):
             return False, {"reason": "merchant_not_exist"}
         else:
             d_args['stripe_account'] = merchant_obj.merchant_info["account_id"]
+    
+    try:
+        customer_obj = Customer.objects.get(merchant_id=merchant_id, unique_id=unique_id)
+    except Customer.DoesNotExist:
+        return False, {"reason": "customer_doesnt_exist"}
+    d_args['payment_method_types'] = ["card", "us_bank_account"]
+    d_args['payment_method_options'] = {
+        "us_bank_account": {
+            "verification_method": "instant"
+        }
+    }
 
     payment_token = None
     q_payment_method = PaymentMethod.objects.all().filter(merchant_id=merchant_id, unique_id=unique_id, 
@@ -324,6 +332,7 @@ def stripe_create_charge(**kwargs):
             return False, {"reason": "no_payment_method"}
         d_args['customer'] = customer_obj.customer_info["customer_id"]
         d_args['amount'] = int(amount)
+        d_args['application_fee_amount'] = application_fee_amount
         d_args['currency'] = "usd"
         d_args['confirm'] = True
         d_args['off_session'] = off_session
@@ -333,6 +342,7 @@ def stripe_create_charge(**kwargs):
     else:
         d_args['customer'] = customer_obj.customer_info["customer_id"]
         d_args['amount'] = int(amount)
+        d_args['application_fee_amount'] = application_fee_amount
         d_args['currency'] = "usd"
         if is_save_payment:
             d_args['setup_future_usage'] = "off_session"
@@ -343,7 +353,106 @@ def stripe_create_charge(**kwargs):
     d_args['payment_method'] = payment_token
     response = _stripe_api_call(stripe.PaymentIntent.create, **d_args)
 
+    import pdb
+    pdb.set_trace()
+
     if not response['is_success']:
+        if response['resource']['code'] == "card_declined":
+            if response['resource']['decline_code'] == "approve_with_id":
+                return False, {"reason": "no_authorization"}
+            elif response['resource']['decline_code'] == "card_not_supported":
+                return False, {"reason": "card_not_supported"}
+            elif response['resource']['decline_code'] == "currency_not_supported":
+                return False, {"reason": "currency_not_supported"}
+            elif response['resource']['decline_code'] == "duplicate_transaction":
+                return False, {"reason": "duplicate_transaction"}
+            elif response['resource']['decline_code'] == "expired_card":
+                return False, {"reason": "expired_card"}
+            elif (response['resource']['decline_code'] == "call_issuer" or
+                  response['resource']['decline_code'] == "do_not_honor" or
+                  response['resource']['decline_code'] == "do_not_try_again" or
+                  response['resource']['decline_code'] == "fraudulent" or
+                  response['resource']['decline_code'] == "generic_decline" or
+                  response['resource']['decline_code'] == "invalid_account" or
+                  response['resource']['decline_code'] == "invalid_amount" or
+                  response['resource']['decline_code'] == "issuer_not_available" or
+                  response['resource']['decline_code'] == "lost_card" or
+                  response['resource']['decline_code'] == "merchant_blacklist" or
+                  response['resource']['decline_code'] == "new_account_information_available" or
+                  response['resource']['decline_code'] == "no_action_taken" or
+                  response['resource']['decline_code'] == "not_permitted" or
+                  response['resource']['decline_code'] == "offline_pin_required" or
+                  response['resource']['decline_code'] == "online_or_offline_pin_required" or
+                  response['resource']['decline_code'] == "pickup_card" or
+                  response['resource']['decline_code'] == "pin_try_exceeded" or
+                  response['resource']['decline_code'] == "reenter_transaction" or
+                  response['resource']['decline_code'] == "restriction_card" or
+                  response['resource']['decline_code'] == "revocation_of_all_authorizations" or
+                  response['resource']['decline_code'] == "revocation_of_authorization" or
+                  response['resource']['decline_code'] == "security_violation" or
+                  response['resource']['decline_code'] == "service_not_allowed" or
+                  response['resource']['decline_code'] == "stolen_card" or
+                  response['resource']['decline_code'] == "stop_payment_order" or
+                  response['resource']['decline_code'] == "testmode_decline" or
+                  response['resource']['decline_code'] == "transaction_not_allowed" or
+                  response['resource']['decline_code'] == "try_again_later" or
+                  response['resource']['decline_code'] == "authentication_required"):
+                  return False, {"reason": "generic_decline"}
+            elif (response['resource']['decline_code'] == "incorrect_number" or 
+                  response['resource']['decline_code'] == "incorrect_cvc" or 
+                  response['resource']['decline_code'] == "incorrect_pin" or
+                  response['resource']['decline_code'] == "incorrect_zip" or
+                  response['resource']['decline_code'] == "invalid_cvc" or
+                  response['resource']['decline_code'] == "invalid_expiry_month" or
+                  response['resource']['decline_code'] == "invalid_expiry_year" or
+                  response['resource']['decline_code'] == "invalid_number" or
+                  response['resource']['decline_code'] == "invalid_pin"):
+                  return False, {"reason": "incorrect_card_info"}
+            elif (response['resource']['decline_code'] == "insufficient_funds" or
+                  response['resource']['decline_code'] == "card_velocity_exceeded" or
+                  response['resource']['decline_code'] == "withdrawal_count_limit_exceeded"):
+                  return False, {"reason": "limit_exceeded"}
+            elif response['resource']['decline_code'] == "processing_error":
+                return False, {"reason": "processing_error"}
+        elif response['resource']['code'] == "expired_card":
+            return False, {"reason": "expired_card"}
+        elif response['resource']['code'] == "processing_error":
+            return False, {"reason": "processing_error"}
         return False, {"reason": "unexpected_error"}
     else:
         return True, {"client_secret": response['resource']['client_secret']}
+
+def stripe_update_charge(**kwargs):
+    merchant_id = kwargs.get("merchant_id", 0)
+    unique_id = kwargs.get("unique_id", None)
+    payment_intent_id = kwargs.get("payment_intent_id", None)
+    is_save_payment = kwargs.get("is_save_payment", False)
+    
+    backend = "stripe"
+    
+    if unique_id == None:
+        raise Exception("Please provide a unique id")
+
+    if payment_intent_id == None:
+        raise Exception("Please provide a payment intent id")
+
+    d_args = dict()
+    if merchant_id > 0:
+        try:
+            merchant_obj = Merchant.objects.get(unique_id=merchant_id, provider=backend)
+        except Merchant.DoesNotExist:
+            return False, {"reason": "merchant_not_exist"}
+        else:
+            d_args['stripe_account'] = merchant_obj.merchant_info["account_id"]
+    
+    try:
+        customer_obj = Customer.objects.get(merchant_id=merchant_id, unique_id=unique_id)
+    except Customer.DoesNotExist:
+        return False, {"reason": "customer_doesnt_exist"}
+
+    d_args["sid"] = payment_intent_id
+    if is_save_payment:
+        d_args['setup_future_usage'] = "off_session"
+    else:
+        d_args['setup_future_usage'] = ""
+    response = _stripe_api_call(stripe.PaymentIntent.modify, **d_args)
