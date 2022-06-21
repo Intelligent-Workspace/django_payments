@@ -353,9 +353,6 @@ def stripe_create_charge(**kwargs):
     d_args['payment_method'] = payment_token
     response = _stripe_api_call(stripe.PaymentIntent.create, **d_args)
 
-    import pdb
-    pdb.set_trace()
-
     if not response['is_success']:
         if response['resource']['code'] == "card_declined":
             if response['resource']['decline_code'] == "approve_with_id":
