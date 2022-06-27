@@ -17,14 +17,18 @@ def stripe_process(webhook_event, callback):
         except Customer.DoesNotExist:
             pass
         else:
-            d_payment_method = {"payment_method_id": webhook_event.data.object.id, "payment_method_type": "payment_method", "payment_method": ""}
-            if "card" in webhook_event.data.object:
-                d_payment_method["payment_method"] = "card"
-            elif "us_bank_account" in webhook_event.data.object:
-                d_payment_method["payment_method"] = "ach_debit"
-            payment_method_object = PaymentMethod(merchant_id=customer_obj.merchant_id, unique_id=customer_obj.unique_id,
-                payment_method_info=d_payment_method)
-            payment_method_object.save()
+            try:
+                payment_method_object = PaymentMethod.objects.get(merchant_id=customer_obj.merchant_id, unique_id=customer_obj.unique_id, 
+                    payment_method_info__payment_method_id=webhook_event.data.object.id)
+            except PaymentMethod.DoesNotExist:
+                d_payment_method = {"payment_method_id": webhook_event.data.object.id, "payment_method_type": "payment_method", "payment_method": ""}
+                if "card" in webhook_event.data.object:
+                    d_payment_method["payment_method"] = "card"
+                elif "us_bank_account" in webhook_event.data.object:
+                    d_payment_method["payment_method"] = "ach_debit"
+                payment_method_object = PaymentMethod(merchant_id=customer_obj.merchant_id, unique_id=customer_obj.unique_id,
+                    payment_method_info=d_payment_method)
+                payment_method_object.save()
 
             params = dict()
             params['merchant_id'] = customer_obj.merchant_id
