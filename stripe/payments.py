@@ -11,16 +11,19 @@ from django_payments.stripe.utils import _stripe_api_call
 stripe.api_key = settings.PAYMENT_PRIVATE_KEY["stripe"]
 stripe.max_network_retries = 2
 
-def __stripe_payment_method_pretty(payment_obj):
+def __stripe_payment_method_pretty(payment_obj, merchant_id, unique_id):
     if "card" in payment_obj:
         payment_method_id = -1
         try:
             payment_method_obj = PaymentMethod.objects.get(payment_method_info__payment_method_type="payment_method", 
                 payment_method_info__payment_method_id=payment_obj["id"])
         except PaymentMethod.DoesNotExist:
-            pass
-        else:
-            payment_method_id = payment_method_obj.id
+            d_payment_method = {"payment_method_id": payment_obj["id"], "payment_method_type": "payment_method", "payment_method": "card"}
+            payment_method_obj = PaymentMethod(merchant_id=merchant_id, unique_id=unique_id,
+                payment_method_info=d_payment_method)
+            payment_method_obj.save()
+        
+        payment_method_id = payment_method_obj.id
         return {
             "id": payment_method_id,
             "type": "card",
@@ -36,9 +39,12 @@ def __stripe_payment_method_pretty(payment_obj):
             payment_method_obj = PaymentMethod.objects.get(payment_method_info__payment_method_type="payment_method", 
                 payment_method_info__payment_method_id=payment_obj["id"])
         except PaymentMethod.DoesNotExist:
-            pass
-        else:
-            payment_method_id = payment_method_obj.id
+            d_payment_method = {"payment_method_id": payment_obj["id"], "payment_method_type": "payment_method", "payment_method": "ach_debit"}
+            payment_method_obj = PaymentMethod(merchant_id=merchant_id, unique_id=unique_id,
+                payment_method_info=d_payment_method)
+            payment_method_obj.save()
+        
+        payment_method_id = payment_method_obj.id
         return {
             "id": payment_method_id,
             "type": "bank_account",
@@ -137,8 +143,14 @@ def stripe_create_payment_method(**kwargs):
     if unique_id == None:
         raise Exception("Please provide a unique id")
 
-    if merchant_id != 0:
-        raise NotImplementedError("Creating Customers on Merchants not supported")
+    d_args = dict()
+    if merchant_id > 0:
+        try:
+            merchant_obj = Merchant.objects.get(unique_id=merchant_id, provider=backend)
+        except Merchant.DoesNotExist:
+            return False, {"reason": "merchant_not_exist"}
+        else:
+            d_args['stripe_account'] = merchant_obj.merchant_info["account_id"]
 
     try:
         customer_obj = Customer.objects.get(merchant_id=merchant_id, unique_id=unique_id, customer_info__type=backend)
@@ -146,11 +158,19 @@ def stripe_create_payment_method(**kwargs):
         return False, {"reason": "customer_doesnt_exist"}
 
     if off_session:
-        usage = "off_session"
+        d_args['usage'] = "off_session"
     else:
-        usage = "on_session"
+        d_args['usage'] = "on_session"
+
+    d_args['customer'] = customer_obj.customer_info["customer_id"]
+    d_args['payment_method_types'] = ["card", "us_bank_account"]
+    d_args['payment_method_options'] = {
+        "us_bank_account": {
+            "verification_method": "instant"
+        }
+    }
     
-    response = _stripe_api_call(stripe.SetupIntent.create, customer=customer_obj.customer_info["customer_id"], usage=usage)
+    response = _stripe_api_call(stripe.SetupIntent.create, **d_args)
 
     if not response['is_success']:
         return False, {"reason": "unexpected_error"}
@@ -229,7 +249,7 @@ def stripe_get_payment_method_detail(**kwargs):
         response = _stripe_api_call(stripe.Customer.retrieve_source, **d_args)
     if not response['is_success']:
         return False, {"reason": "unexpected_error"}
-    return True, __stripe_payment_method_pretty(response['resource'])
+    return True, __stripe_payment_method_pretty(response['resource'], merchant_id, unique_id)
 
 def stripe_get_payment_method_details(**kwargs):
     merchant_id = kwargs.get("merchant_id", 0)
