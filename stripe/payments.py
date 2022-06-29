@@ -331,6 +331,8 @@ def stripe_create_charge(**kwargs):
             "verification_method": "instant"
         }
     }
+    if merchant_id > 0:
+        d_args['application_fee_amount'] = application_fee_amount
 
     payment_token = None
     q_payment_method = PaymentMethod.objects.all().filter(merchant_id=merchant_id, unique_id=unique_id, 
@@ -352,7 +354,6 @@ def stripe_create_charge(**kwargs):
             return False, {"reason": "no_payment_method"}
         d_args['customer'] = customer_obj.customer_info["customer_id"]
         d_args['amount'] = int(amount)
-        d_args['application_fee_amount'] = application_fee_amount
         d_args['currency'] = "usd"
         d_args['confirm'] = True
         d_args['off_session'] = off_session
