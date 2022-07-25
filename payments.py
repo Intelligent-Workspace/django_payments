@@ -6,6 +6,11 @@ def create_customer(**kwargs):
         return stripe_create_customer(**kwargs)
     raise NotImplementedError("Unsupported Payment Backend")
 
+def update_customer(**kwargs):
+    if get_backend() == "stripe":
+        return stripe_update_customer(**kwargs)
+    raise NotImplementedError("Unsupported Payment Backend")
+
 def get_customer_details(**kwargs):
     if get_backend() == "stripe":
         return stripe_get_customer_details(**kwargs)

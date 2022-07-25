@@ -108,6 +108,40 @@ def stripe_create_customer(**kwargs):
         return False, {"reason": "customer_does_exist"}
     return False, {"reason": "unexpected_error"}
 
+def stripe_update_customer(**kwargs):
+    merchant_id = kwargs.get("merchant_id", 0)
+    unique_id = kwargs.get("unique_id", None)
+    email = kwargs.get("email", None)
+
+    backend = "stripe"
+
+    if unique_id == None:
+        raise Exception("Please provide a unique id")
+    if email == None:
+        raise Exception("Please provide an email")
+
+    email = email.lower()
+
+    try:
+        customer_obj = Customer.objects.get(merchant_id=merchant_id, unique_id=unique_id, customer_info__type=backend)
+    except Customer.DoesNotExist:
+        return False, {"reason": "customer_doesnt_exist"}
+
+    d_args = dict()
+    if merchant_id > 0:
+        try:
+            merchant_obj = Merchant.objects.get(unique_id=merchant_id, provider=backend)
+        except Merchant.DoesNotExist:
+            return False, {"reason": "merchant_not_exist"}
+        else:
+            d_args['stripe_account'] = merchant_obj.merchant_info["account_id"]
+    d_args['sid'] = customer_obj.customer_info["customer_id"]
+    d_args['email'] = email
+    response = _stripe_api_call(stripe.Customer.modify, **d_args)
+    if not response['is_success']:
+        return False, {"reason": "unexpected_error"}
+    return True, {}
+
 def stripe_get_customer_details(**kwargs):
     merchant_id = kwargs.get("merchant_id", 0)
     unique_id = kwargs.get("unique_id", None)
