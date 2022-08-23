@@ -85,16 +85,17 @@ def stripe_merchant_sync(**kwargs):
     account = response['resource']    
     merchant_obj.set_is_setup_started()
 
-    if account['requirements']['disabled_reason'] == "requirements.past_due":
-        merchant_obj.merchant_info["verification_status"] = "requires_info"
-    elif account['requirements']['disabled_reason'] == "requirements.pending_verification":
-        merchant_obj.merchant_info['verification_status'] = "verify"
-    elif "rejected" in account['requirements']['disabled_reason']:
-        merchant_obj.merchant_info['verification_status'] = "rejected"
-    elif account['requirements']['disabled_reason'] == "listed" or account['requirements']['disabled_reason'] == "under_review":
-        merchant_obj.merchant_info['verification_status'] = "under_review"
-    elif account['requirements']['disabled_reason'] == "other":
-        merchant_obj.merchant_info['verification_status'] = "under_review_disable"
+    if account['requirements']['disabled_reason'] is not None:
+        if account['requirements']['disabled_reason'] == "requirements.past_due":
+            merchant_obj.merchant_info["verification_status"] = "requires_info"
+        elif account['requirements']['disabled_reason'] == "requirements.pending_verification":
+            merchant_obj.merchant_info['verification_status'] = "verify"
+        elif "rejected" in account['requirements']['disabled_reason']:
+            merchant_obj.merchant_info['verification_status'] = "rejected"
+        elif account['requirements']['disabled_reason'] == "listed" or account['requirements']['disabled_reason'] == "under_review":
+            merchant_obj.merchant_info['verification_status'] = "under_review"
+        elif account['requirements']['disabled_reason'] == "other":
+            merchant_obj.merchant_info['verification_status'] = "under_review_disable"
     if account["charges_enabled"] == True and account["details_submitted"] == True and account["payouts_enabled"] == True:
         merchant_obj.set_is_setup_finished()
     merchant_obj.save()
