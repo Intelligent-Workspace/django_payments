@@ -111,6 +111,19 @@ def stripe_process(webhook_event, callback):
             params['fail_message'] = webhook_event.data.object.failure_message
             params['event'] = "charge_fail"
             callback(params)
+    elif webhook_event['type'] == "financial_connections.account.created":
+        try:
+            customer_obj = Customer.objects.get(customer_info__type="stripe", customer_info__customer_id=webhook_event.data.object.account_holder.customer)
+        except Customer.DoesNotExist:
+            pass
+        else:
+            params = dict()
+            params['merchant_id'] = customer_obj.merchant_id
+            params['customer_id'] = customer_obj.unique_id
+            params['bank'] = webhook_event.data.object.institution_name
+            params['last4'] = webhook_event.data.object.last4
+            params['event'] = "bank_account_verify"
+            callback(params)
 
 # Create your views here.
 @csrf_exempt
